@@ -1,0 +1,7 @@
+imagehash
+requests
+pymvptree
+Flask
+connexion
+pika
+redis

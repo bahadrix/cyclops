@@ -1,0 +1,25 @@
+path:
+  data: $HOME/.cyclops/data
+amqp:
+  address: amqp://guest:guest@8localhost:5672?heartbeat=6000
+
+  # Max queue task prefetch count per worker
+  prefetch: 20
+redis:
+  # TCP Redis: tcp://host:post/dbNum
+  address: tcp://localhost:6379/0
+workers:
+  - ALPHA
+  - BETA
+  - GAMMA
+  - DELTA
+  - EPSILON
+  - ZETA
+  - ETA
+rest:
+  host: 127.0.0.1
+  port: 9090
+settings:
+  autosave: # Check the tree at given periods and saves it to disk if it's dirty.
+    enabled: True
+    interval: 10 # in seconds

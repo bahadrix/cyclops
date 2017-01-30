@@ -1,0 +1,189 @@
+---
+swagger: "2.0"
+info:
+  description: Image hash storage and similarity search engine REST interface
+  version: "1.0.0"
+  title: "Cyclops API"
+  contact:
+    name: "Bahadir Katipoglu"
+    email: "bahadir.katipoglu@waplog.com"
+host: "127.0.0.1"
+basePath: "/v1"
+schemes:
+- "https"
+- "http"
+consumes:
+- "application/json"
+produces:
+- "application/json"
+paths:
+  /db/save:
+    get:
+      tags:
+      - "default"
+      summary: "Saves in-memory elements to disk."
+      operationId: "controllers.default_controller.db_save_get"
+      parameters: []
+      responses:
+        200:
+          description: "Successfully saved"
+  /doc:
+    get:
+      tags:
+      - "default"
+      operationId: "controllers.default_controller.doc_get"
+      produces:
+      - "text/html"
+      parameters: []
+      responses:
+        200:
+          description: "API Help docuemntation. Probably you are here now."
+  /hash/{hash}:
+    get:
+      tags:
+      - "default"
+      summary: "Get url set of given hash"
+      description: "Finds exact match of hash in database and returns urls under this\
+        \ hash."
+      operationId: "controllers.default_controller.hash_hash_get"
+      parameters:
+      - name: "hash"
+        in: "path"
+        description: "Hash in long number format"
+        required: true
+        type: "integer"
+        format: "int64"
+      - name: "limit"
+        in: "query"
+        description: "Limit max number of set elements"
+        required: false
+        type: "integer"
+      responses:
+        200:
+          description: "URL set"
+          schema:
+            $ref: "#/definitions/URLSet"
+  /hash/{hash}/count:
+    get:
+      tags:
+      - "default"
+      summary: "Get number of elements in url set of given hash"
+      description: "Finds exact match of hash in database and returns urls under this\
+        \ hash."
+      operationId: "controllers.default_controller.hash_hash_count_get"
+      parameters:
+      - name: "hash"
+        in: "path"
+        description: "Hash in long number format"
+        required: true
+        type: "integer"
+        format: "int64"
+      responses:
+        200:
+          description: "URL set"
+          schema:
+            $ref: "#/definitions/inline_response_200"
+        400:
+          description: "Hash not found"
+  /query/mvp/url:
+    post:
+      tags:
+      - "default"
+      summary: "Query MVP Tree by URL source"
+      description: "Execute query with hash obtained from given url.\n\n*Notice that\
+        \ any returned url is from set matched hash. Therefore each url has unique\
+        \ hash in returned result set.*\n"
+      operationId: "controllers.default_controller.query_mvp_url_post"
+      parameters:
+      - in: "body"
+        name: "body"
+        required: true
+        schema:
+          $ref: "#/definitions/MVPURLQuery"
+      responses:
+        200:
+          description: "Hash successfully added"
+          schema:
+            $ref: "#/definitions/QueryResult"
+  /urls:
+    put:
+      tags:
+      - "default"
+      summary: "Add hashes"
+      description: "Downloads images from given URLs than creates hashes from them\
+        \ and adds them to database."
+      operationId: "controllers.default_controller.urls_put"
+      parameters:
+      - in: "body"
+        name: "body"
+        description: "URL array"
+        required: true
+        schema:
+          type: "array"
+          items:
+            type: "string"
+            description: "url"
+      responses:
+        200:
+          description: "Hash successfully added"
+definitions:
+  QueryResult:
+    type: "object"
+    properties:
+      meta:
+        $ref: "#/definitions/QueryResult_meta"
+      results:
+        type: "array"
+        description: "Result set. Sorted by hamming distance from reference hash."
+        items:
+          $ref: "#/definitions/QueryResult_results"
+  URLSet:
+    type: "object"
+    properties:
+      urls:
+        type: "array"
+        items:
+          type: "string"
+  MVPURLQuery:
+    type: "object"
+    properties:
+      URL:
+        type: "string"
+      radius:
+        type: "number"
+        format: "float"
+      k:
+        type: "integer"
+        description: "kNearest. Limit results per worker."
+  inline_response_200:
+    properties:
+      count:
+        type: "integer"
+  QueryResult_meta:
+    properties:
+      queryString:
+        type: "string"
+        description: "Executed query in string expression."
+      ref:
+        type: "integer"
+        description: "Reference hash"
+      total_results:
+        type: "integer"
+      total_elapsed_time:
+        type: "number"
+        format: "float"
+        description: "Total elapsed query execution time in milliseconds."
+  QueryResult_results:
+    properties:
+      dist:
+        type: "number"
+        format: "integer"
+        description: "Distance from reference hash"
+      hash:
+        type: "string"
+        format: "hex"
+        description: "Founded hash in hex format prefixed by '0x'"
+      url:
+        type: "string"
+        format: "url"
+        description: "Any url from hash set"
