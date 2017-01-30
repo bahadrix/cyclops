@@ -2,7 +2,6 @@ import logging
 import os.path
 import threading
 from threading import Lock
-import pika
 from pymvptree import Tree, Point
 import util
 from core import Hasher
@@ -10,10 +9,8 @@ from core.kvstore import KVStore
 
 
 class TreeWorker:
-    def __init__(self, name, dbFile, amqpAddress, kvStore: KVStore, leafCap=4096, autoSave=False, autoSaveInterval=10,
-                 prefetch=10):
+    def __init__(self, name, dbFile, kvStore: KVStore, leafCap=4096, autoSave=False, autoSaveInterval=10):
 
-        self.prefetch = int(prefetch)
         self.kvStore = kvStore
         self.logger = logging.getLogger("TreeWorker:{}".format(name))
         self.mutex = Lock()
@@ -22,8 +19,6 @@ class TreeWorker:
         self.autoSave = autoSave
         self.autoSaveInterval = int(autoSaveInterval)
         self.dirty = False
-        self.amqpAddress = amqpAddress
-        self.produceChannel = util.newAMQPConnection(self.amqpAddress).channel()
 
         if os.path.isfile(dbFile):  # File exists
             self.logger.info("Reading file {}".format(dbFile))
@@ -35,6 +30,10 @@ class TreeWorker:
         if autoSave:
             self.logger.debug("Starting auto-save cycle.")
             self.__autoSaveCycle()
+        self.increaseStat("initialized")
+
+    def increaseStat(self, stat: str, increment: int = 1):
+        self.kvStore.increaseStat("worker:{}".format(self.name), stat, increment)
 
     def __autoSaveCycle(self):
         if self.dirty:
@@ -43,48 +42,20 @@ class TreeWorker:
             self.logger.info("Auto-save done.")
         threading.Timer(self.autoSaveInterval, self.__autoSaveCycle).start()
 
-    def onHashURL(self, ch, method, properties, body):
-        err = ""
-        url = str(body, "utf-8")
-        try:
-            self.addFromURL(url)
-            self.logger.info("URL added: {}".format(url))
-        except FileNotFoundError as e:
-            err = "Download error: {}".format(e)
-        except Exception as e:
-            err = "Unknown error: {}".format(e)
-        finally:
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-            if err != "":
-                self.produceChannel.basic_publish(
-                    exchange='',
-                    routing_key="cyclops_hashing_urls_errors",
-                    properties=pika.BasicProperties(headers={
-                        "error": err,
-                        "worker": self.name,
-                    }),
-                    body=url
-                )
+    def onHashURL(self, url):
+
+        self.addFromURL(url)
+        self.increaseStat("consumed_url")
+        self.logger.info("URL added: {}".format(url))
 
     def __consumeCycle(self):
-        while True:
-            consumeChannel = util.newAMQPConnection(self.amqpAddress).channel()
-            consumeChannel.basic_qos(prefetch_count=self.prefetch)
-            consumeChannel.basic_consume(self.onHashURL,
-                                         queue='cyclops_hashing_urls')
-            try:
-                consumeChannel.start_consuming()
-            except Exception as e:
-                self.logger.warning("Queue listener stopped, restarting immediately. Error is {}".format(e))
+        key = "cyclops_hashing_urls"
+        self.logger.info("Listening key {}".format(key))
+        self.kvStore.subscribe(key, self.name, lambda url: self.onHashURL(url))
 
     def listenHashQueue(self):
         self.logger.debug("Starting queue listeners.")
-
-        self.produceChannel.queue_declare(queue="cyclops_hashing_urls_errors", durable=True)
-
         threading.Thread(target=self.__consumeCycle).start()
-
-        self.logger.info("Queue listeners started.")
 
     def save(self):
         self.mutex.acquire()
@@ -94,14 +65,16 @@ class TreeWorker:
             self.dirty = False
         finally:
             self.mutex.release()
+            self.increaseStat("db_saved")
 
     def query(self, hash, radius, limit=65535):
-        self.mutex.acquire()
         self.logger.info("Query received")
+        self.mutex.acquire()
         try:
             return self.tree.filter(hash, radius, limit)
         finally:
             self.mutex.release()
+            self.increaseStat("query_executed")
 
     def addHash(self, hash, url, lock=True):
 
@@ -112,10 +85,12 @@ class TreeWorker:
             if self.kvStore.hashExists(hashHex):  # Hash exists, just append url
                 self.logger.debug("Hash already exist, just appending url. {}".format(url))
                 self.kvStore.addURLToHash(hashHex, url)
+                self.increaseStat("url_append")
             else:  # Add hash first time
                 self.tree.add(Point(url, hash))
                 self.kvStore.addHash(self.name, hashHex, url)
                 self.dirty = True
+                self.increaseStat("hash_add")
         finally:
             if lock:
                 self.mutex.release()
@@ -136,14 +111,3 @@ class TreeWorker:
         except FileNotFoundError as err:
             self.logger.error(err)
             raise err
-
-    def addFromURLs(self, urls):
-        hashes = {}
-        for url in urls:
-            try:
-                hash = Hasher.hashFromURL(url)
-                hashes[url] = hash
-            except FileNotFoundError as err:
-                self.logger.error(err)
-
-        self.addHashes(hashes)

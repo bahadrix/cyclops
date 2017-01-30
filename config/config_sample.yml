@@ -1,10 +1,5 @@
 path:
   data: $HOME/.cyclops/data
-amqp:
-  address: amqp://guest:guest@8localhost:5672?heartbeat=6000
-
-  # Max queue task prefetch count per worker
-  prefetch: 20
 redis:
   # TCP Redis: tcp://host:post/dbNum
   address: tcp://localhost:6379/0
