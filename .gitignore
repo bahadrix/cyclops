@@ -93,3 +93,4 @@ ENV/
 /.idea
 /config/config.yml
 /config/config.yaml
+/swagger/docs
