@@ -11,7 +11,8 @@ workers:
   - DELTA
   - EPSILON
   - ZETA
-  - ETA
+  - SHOTA
+  - ARHCILL
 rest:
   host: 0.0.0.0
   port: 9090
