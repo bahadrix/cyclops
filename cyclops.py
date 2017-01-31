@@ -19,7 +19,6 @@ logging.getLogger("requests.packages.urllib3").setLevel(logging.WARNING)
 parser = argparse.ArgumentParser(description='Cyclops Hash Push Client')
 parser.add_argument('-c', '--config', default="~/.cyclops/config.yml",
                     help="Config file location")
-
 args = parser.parse_args()
 print(args.config)
 c.init(args.config)

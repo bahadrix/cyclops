@@ -1,7 +1,7 @@
 import pprint
+import string
 import threading
 from datetime import datetime
-import pika
 import redis
 import yaml
 import queue
@@ -39,7 +39,10 @@ def init(configLocation):
     logger.info("Config \n{}".format(pprint.pformat(config, indent=4)))
 
     # Redis
-    redisPool = kvstore.createPool(config["redis"]["address"])
+
+    redisAddress = string.Template(config["redis"]["address"]).substitute(os.environ)
+    logger.info("Redis server address is {}".format(redisAddress))
+    redisPool = kvstore.createPool(redisAddress)
     kv = kvstore.KVStore(redisPool)
 
     threads = []

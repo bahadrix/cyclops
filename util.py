@@ -1,6 +1,5 @@
 import operator
 
-import pika
 
 
 def binaryBytesToHex(byteString) -> str:
