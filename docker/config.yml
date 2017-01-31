@@ -2,7 +2,8 @@ path:
   data: $HOME/.cyclops/data
 redis:
   # TCP Redis: tcp://host:post/dbNum
-  address: tcp://localhost:6379/0
+  #address: tcp://localhost:6379/1
+  address: $REDIS_PORT_6379_TCP/1
 workers:
   - ALPHA
   - BETA
@@ -10,11 +11,13 @@ workers:
   - DELTA
   - EPSILON
   - ZETA
-  - ETA
+  - SHOTA
+  - ARHCILL
 rest:
-  host: 127.0.0.1
+  host: 0.0.0.0
   port: 9090
 settings:
   autosave: # Check the tree at given periods and saves it to disk if it's dirty.
     enabled: True
     interval: 10 # in seconds
+

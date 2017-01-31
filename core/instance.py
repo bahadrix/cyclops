@@ -1,12 +1,10 @@
 import pprint
+import string
 import threading
 from datetime import datetime
-import pika
 import redis
 import yaml
 import queue
-import time
-from pika.exceptions import ConnectionClosed
 import util
 from core import Hasher
 from core import kvstore
@@ -19,21 +17,13 @@ from util import binaryBytesToHex
 config = {}
 workers = {}  # type: dict[TreeWorker]
 logger = logging.getLogger(__name__)
-amqpChannel = None
 redisPool = None  # type: redis.ConnectionPool
-kv = None # type: kvstore.KVStore
+kv = None  # type: kvstore.KVStore
 
-
-def connectAMQPChannel():
-    global amqpChannel
-    conn = pika.BlockingConnection(pika.URLParameters(config["amqp"]["address"]))
-    amqpChannel = conn.channel()
-    amqpChannel.queue_declare(queue="cyclops_hashing_urls", durable=True)
 
 def init(configLocation):
     global config
     global workers
-    global amqpChannel
     global redisPool
     global kv
 
@@ -49,11 +39,11 @@ def init(configLocation):
     logger.info("Config \n{}".format(pprint.pformat(config, indent=4)))
 
     # Redis
-    redisPool = kvstore.createPool(config["redis"]["address"])
-    kv = kvstore.KVStore(redisPool)
 
-    # Declaring queues
-    connectAMQPChannel()
+    redisAddress = string.Template(config["redis"]["address"]).substitute(os.environ)
+    logger.info("Redis server address is {}".format(redisAddress))
+    redisPool = kvstore.createPool(redisAddress)
+    kv = kvstore.KVStore(redisPool)
 
     threads = []
 
@@ -65,10 +55,9 @@ def init(configLocation):
         logger.info("Starting {}".format(workerName))
         fullpath = os.path.join(config["path"]["data"], "{}.mvp".format(workerName))
         kv = kvstore.KVStore(redisPool)
-        w = TreeWorker(workerName, fullpath, config["amqp"]["address"], kv,
+        w = TreeWorker(workerName, fullpath, kv,
                        autoSave=config["settings"]["autosave"]["enabled"],
-                       autoSaveInterval=config["settings"]["autosave"]["interval"],
-                       prefetch=config["amqp"]["prefetch"])
+                       autoSaveInterval=config["settings"]["autosave"]["interval"])
         workers[workerName] = w
 
     for workerName in config['workers']:
@@ -82,7 +71,7 @@ def init(configLocation):
     logger.info("Workers are started.")
 
 
-def getHashURLSet(hashValue, limit:int=0) -> list:
+def getHashURLSet(hashValue, limit: int = 0) -> list:
     """
     Returns url set of given hash
     :param hashValue: Hash value. Must be long/integer or hex starts with '0x'
@@ -97,23 +86,9 @@ def getHashURLSet(hashValue, limit:int=0) -> list:
     return kv.getHashURLs(hashHex, limit)
 
 
-def publishURLToHash(url, retry=0):
-    try:
-        amqpChannel.basic_publish(
-            exchange='',
-            routing_key="cyclops_hashing_urls",
-            body=url,
-            properties=pika.BasicProperties(
-                delivery_mode=2,
-            )
-        )
-    except ConnectionClosed as e:
-        if retry > 20:
-            raise Exception("Can't connecy after 20 retry!")
-        logger.warn("Connection closed. Retrying..")
-        connectAMQPChannel()
-        time.sleep(1)
-        publishURLToHash(url, retry + 1)
+def publishURLToHash(url):
+    kv.publish("cyclops_hashing_urls", url)
+
 
 def queryByURL(url, radius, k):
     global workers
@@ -126,7 +101,6 @@ def queryByURL(url, radius, k):
         results = w.query(h, r, limit)
 
         for point in results:
-
             q.put({
                 "url": point.point_id,
                 "dist": util.hamming(hash, point.data),

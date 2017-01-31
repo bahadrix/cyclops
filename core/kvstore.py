@@ -1,5 +1,7 @@
+from typing import Callable
 from urllib.parse import urlparse
 
+import logging
 import redis
 
 
@@ -12,10 +14,14 @@ def createPool(address) -> redis.ConnectionPool:
     return redis.ConnectionPool(host=host, port=port, db=db, decode_responses=True)
 
 
+log = logging.getLogger("KVStore")
+
+
 class KVStore:
     def __init__(self, pool: redis.ConnectionPool):
         self.pool = pool
         self.baseConn = self.__newConn()
+        self.breakSubscription = False
 
     def __newConn(self) -> redis.Redis:
         return redis.Redis(connection_pool=self.pool)
@@ -55,3 +61,30 @@ class KVStore:
                 break
 
         return results
+
+    def publish(self, key, item):
+        conn = self.__newConn()
+        conn.lpush(key, item)
+
+    def subscribe(self, key, fetcherName, listener: Callable[[str], None]):
+        activeQueue = "fetch:active:{}:{}".format(fetcherName, key)
+        conn = self.__newConn()
+        while not self.breakSubscription:
+            item = conn.brpoplpush(key, activeQueue, 10)
+            if item is not None:
+                try:
+                    listener(item)
+                except Exception as e:
+                    conn.lpop(activeQueue)
+                    conn.lpush("fetch:errors:{}:{}".format(fetcherName, key), item)
+                    log.error(
+                        "Subscriber '{}' has been raised an error for item '{}': {}".format(fetcherName, item, str(e)))
+                    continue
+
+                conn.lpop(activeQueue)
+            else:  # No new items in given interval, refreshing the connection
+                conn = self.__newConn()
+
+    def increaseStat(self, category: str, stat: str, increment: int = 1):
+        conn = self.__newConn()
+        conn.hincrby("stats:{}".format(category), stat, increment)
