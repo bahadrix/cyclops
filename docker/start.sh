@@ -39,7 +39,7 @@ esac
 shift # past argument or value
 done
 
-MVP_PATH="${DATA_ROOT}/.data"
+MVP_PATH="${DATA_ROOT}/data"
 
 mkdir -p ${MVP_PATH}
 
